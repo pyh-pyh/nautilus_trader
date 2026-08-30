@@ -692,13 +692,14 @@ fn test_bar_roundtrip() {
         BarSpecification::new(1, BarAggregation::Minute, PriceType::Last),
         AggregationSource::Internal,
     );
-    let bar = Bar::new(
+    let bar = Bar::new_with_quote_volume(
         bar_type,
         Price::from("150.00"),
         Price::from("152.50"),
         Price::from("149.75"),
         Price::from("151.25"),
         Quantity::from("100000"),
+        "15125000.000000000000000001".parse().unwrap(),
         1234567890.into(),
         1234567891.into(),
     );
@@ -722,6 +723,7 @@ fn test_bar_roundtrip() {
     assert_eq!(bar.low, decoded.low);
     assert_eq!(bar.close, decoded.close);
     assert_eq!(bar.volume, decoded.volume);
+    assert_eq!(bar.quote_volume(), decoded.quote_volume());
     assert_eq!(bar.ts_event, decoded.ts_event);
     assert_eq!(bar.ts_init, decoded.ts_init);
 }

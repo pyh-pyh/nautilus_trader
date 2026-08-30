@@ -55,6 +55,8 @@ struct Bar {
     volume @5 :Types.Quantity;
     tsEvent @6 :Base.UnixNanos;
     tsInit @7 :Base.UnixNanos;
+    quoteVolumeRaw @8 :Types.Int128;
+    hasQuoteVolume @9 :Bool;
 }
 
 # Mark price update

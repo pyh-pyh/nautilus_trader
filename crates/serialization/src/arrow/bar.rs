@@ -16,19 +16,23 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use arrow::{
-    array::{FixedSizeBinaryArray, FixedSizeBinaryBuilder, UInt64Array},
+    array::{
+        Array, Decimal128Array, Decimal128Builder, FixedSizeBinaryArray, FixedSizeBinaryBuilder,
+        UInt64Array,
+    },
     datatypes::{DataType, Field, Schema},
     error::ArrowError,
     record_batch::RecordBatch,
 };
 use nautilus_model::{
-    data::{Bar, BarType},
+    data::{Bar, BarType, QuoteVolume},
     types::fixed::PRECISION_BYTES,
 };
 
 use super::{
     DecodeDataFromRecordBatch, EncodingError, KEY_BAR_TYPE, KEY_PRICE_PRECISION,
-    KEY_SIZE_PRECISION, decode_price, decode_quantity, extract_column, validate_precision_bytes,
+    KEY_SIZE_PRECISION, decode_price, decode_quantity, extract_column,
+    extract_column_by_name_or_index, validate_precision_bytes,
 };
 use crate::arrow::{ArrowSchemaProvider, Data, DecodeFromRecordBatch, EncodeToRecordBatch};
 
@@ -40,6 +44,7 @@ impl ArrowSchemaProvider for Bar {
             Field::new("low", DataType::FixedSizeBinary(PRECISION_BYTES), false),
             Field::new("close", DataType::FixedSizeBinary(PRECISION_BYTES), false),
             Field::new("volume", DataType::FixedSizeBinary(PRECISION_BYTES), false),
+            Field::new("quote_volume", DataType::Decimal128(38, 18), true),
             Field::new("ts_event", DataType::UInt64, false),
             Field::new("ts_init", DataType::UInt64, false),
         ];
@@ -83,6 +88,8 @@ impl EncodeToRecordBatch for Bar {
         let mut low_builder = FixedSizeBinaryBuilder::with_capacity(data.len(), PRECISION_BYTES);
         let mut close_builder = FixedSizeBinaryBuilder::with_capacity(data.len(), PRECISION_BYTES);
         let mut volume_builder = FixedSizeBinaryBuilder::with_capacity(data.len(), PRECISION_BYTES);
+        let mut quote_volume_builder =
+            Decimal128Builder::with_capacity(data.len()).with_precision_and_scale(38, 18)?;
         let mut ts_event_builder = UInt64Array::builder(data.len());
         let mut ts_init_builder = UInt64Array::builder(data.len());
 
@@ -100,6 +107,11 @@ impl EncodeToRecordBatch for Bar {
             volume_builder
                 .append_value(bar.volume.raw.to_le_bytes())
                 .unwrap();
+            if bar.quote_volume.is_undefined() {
+                quote_volume_builder.append_null();
+            } else {
+                quote_volume_builder.append_value(bar.quote_volume.raw);
+            }
             ts_event_builder.append_value(bar.ts_event.as_u64());
             ts_init_builder.append_value(bar.ts_init.as_u64());
         }
@@ -109,6 +121,7 @@ impl EncodeToRecordBatch for Bar {
         let low_array = low_builder.finish();
         let close_array = close_builder.finish();
         let volume_array = volume_builder.finish();
+        let quote_volume_array = quote_volume_builder.finish();
         let ts_event_array = ts_event_builder.finish();
         let ts_init_array = ts_init_builder.finish();
 
@@ -120,6 +133,7 @@ impl EncodeToRecordBatch for Bar {
                 Arc::new(low_array),
                 Arc::new(close_array),
                 Arc::new(volume_array),
+                Arc::new(quote_volume_array),
                 Arc::new(ts_event_array),
                 Arc::new(ts_init_array),
             ],
@@ -169,8 +183,27 @@ impl DecodeFromRecordBatch for Bar {
             4,
             DataType::FixedSizeBinary(PRECISION_BYTES),
         )?;
-        let ts_event_values = extract_column::<UInt64Array>(cols, "ts_event", 5, DataType::UInt64)?;
-        let ts_init_values = extract_column::<UInt64Array>(cols, "ts_init", 6, DataType::UInt64)?;
+        let quote_volume_values = match record_batch.schema().index_of("quote_volume") {
+            Ok(index) => Some(extract_column::<Decimal128Array>(
+                cols,
+                "quote_volume",
+                index,
+                DataType::Decimal128(38, 18),
+            )?),
+            Err(_) => None,
+        };
+        let ts_event_values = extract_column_by_name_or_index::<UInt64Array>(
+            &record_batch,
+            "ts_event",
+            5,
+            DataType::UInt64,
+        )?;
+        let ts_init_values = extract_column_by_name_or_index::<UInt64Array>(
+            &record_batch,
+            "ts_init",
+            6,
+            DataType::UInt64,
+        )?;
 
         validate_precision_bytes(open_values, "open")?;
         validate_precision_bytes(high_values, "high")?;
@@ -185,6 +218,13 @@ impl DecodeFromRecordBatch for Bar {
                 let low = decode_price(low_values.value(i), price_precision, "low", i)?;
                 let close = decode_price(close_values.value(i), price_precision, "close", i)?;
                 let volume = decode_quantity(volume_values.value(i), size_precision, "volume", i)?;
+                let quote_volume = match quote_volume_values {
+                    Some(values) if !values.is_null(i) => {
+                        QuoteVolume::from_raw_checked(values.value(i))
+                            .map_err(|e| EncodingError::ParseError("quote_volume", e.to_string()))?
+                    }
+                    _ => QuoteVolume::undefined(),
+                };
                 let ts_event = ts_event_values.value(i).into();
                 let ts_init = ts_init_values.value(i).into();
 
@@ -195,6 +235,7 @@ impl DecodeFromRecordBatch for Bar {
                     low,
                     close,
                     volume,
+                    quote_volume,
                     ts_event,
                     ts_init,
                 })
@@ -239,6 +280,7 @@ mod tests {
             Field::new("low", DataType::FixedSizeBinary(PRECISION_BYTES), false),
             Field::new("close", DataType::FixedSizeBinary(PRECISION_BYTES), false),
             Field::new("volume", DataType::FixedSizeBinary(PRECISION_BYTES), false),
+            Field::new("quote_volume", DataType::Decimal128(38, 18), true),
             Field::new("ts_event", DataType::UInt64, false),
             Field::new("ts_init", DataType::UInt64, false),
         ];
@@ -256,6 +298,7 @@ mod tests {
         expected_map.insert("low".to_string(), fixed_size_binary.clone());
         expected_map.insert("close".to_string(), fixed_size_binary.clone());
         expected_map.insert("volume".to_string(), fixed_size_binary);
+        expected_map.insert("quote_volume".to_string(), "Decimal128(38, 18)".to_string());
         expected_map.insert("ts_event".to_string(), "UInt64".to_string());
         expected_map.insert("ts_init".to_string(), "UInt64".to_string());
         assert_eq!(schema_map, expected_map);
@@ -311,10 +354,14 @@ mod tests {
             .as_any()
             .downcast_ref::<FixedSizeBinaryArray>()
             .unwrap();
-        let ts_event_values = columns[5].as_any().downcast_ref::<UInt64Array>().unwrap();
-        let ts_init_values = columns[6].as_any().downcast_ref::<UInt64Array>().unwrap();
+        let quote_volume_values = columns[5]
+            .as_any()
+            .downcast_ref::<Decimal128Array>()
+            .unwrap();
+        let ts_event_values = columns[6].as_any().downcast_ref::<UInt64Array>().unwrap();
+        let ts_init_values = columns[7].as_any().downcast_ref::<UInt64Array>().unwrap();
 
-        assert_eq!(columns.len(), 7);
+        assert_eq!(columns.len(), 8);
         assert_eq!(open_values.len(), 2);
         assert_eq!(
             get_raw_price(open_values.value(0)),
@@ -360,6 +407,7 @@ mod tests {
             get_raw_quantity(volume_values.value(1)),
             (1110.0 * FIXED_SCALAR) as QuantityRaw
         );
+        assert_eq!(quote_volume_values.null_count(), 2);
         assert_eq!(ts_event_values.len(), 2);
         assert_eq!(ts_event_values.value(0), 1);
         assert_eq!(ts_event_values.value(1), 2);
@@ -395,6 +443,9 @@ mod tests {
         ]);
         let ts_event = UInt64Array::from(vec![1, 2]);
         let ts_init = UInt64Array::from(vec![3, 4]);
+        let quote_volume = Decimal128Array::from(vec![None::<i128>, None::<i128>])
+            .with_precision_and_scale(38, 18)
+            .unwrap();
 
         let record_batch = RecordBatch::try_new(
             Bar::get_schema(Some(metadata.clone())).into(),
@@ -404,6 +455,7 @@ mod tests {
                 Arc::new(low),
                 Arc::new(close),
                 Arc::new(volume),
+                Arc::new(quote_volume),
                 Arc::new(ts_event),
                 Arc::new(ts_init),
             ],
@@ -431,6 +483,9 @@ mod tests {
         ]);
         let ts_event = UInt64Array::from(vec![1]);
         let ts_init = UInt64Array::from(vec![2]);
+        let quote_volume = Decimal128Array::from(vec![None::<i128>])
+            .with_precision_and_scale(38, 18)
+            .unwrap();
 
         let record_batch = RecordBatch::try_new(
             Bar::get_schema(Some(metadata.clone())).into(),
@@ -440,6 +495,7 @@ mod tests {
                 Arc::new(low),
                 Arc::new(close),
                 Arc::new(volume),
+                Arc::new(quote_volume),
                 Arc::new(ts_event),
                 Arc::new(ts_init),
             ],
@@ -470,6 +526,9 @@ mod tests {
         ]);
         let ts_event = UInt64Array::from(vec![1]);
         let ts_init = UInt64Array::from(vec![2]);
+        let quote_volume = Decimal128Array::from(vec![None::<i128>])
+            .with_precision_and_scale(38, 18)
+            .unwrap();
 
         let record_batch = RecordBatch::try_new(
             Bar::get_schema(Some(metadata.clone())).into(),
@@ -479,6 +538,7 @@ mod tests {
                 Arc::new(low),
                 Arc::new(close),
                 Arc::new(volume),
+                Arc::new(quote_volume),
                 Arc::new(ts_event),
                 Arc::new(ts_init),
             ],
@@ -501,13 +561,14 @@ mod tests {
         let bar_type = BarType::from_str("AAPL.XNAS-1-MINUTE-LAST-INTERNAL").unwrap();
         let metadata = Bar::get_metadata(&bar_type, 2, 0);
 
-        let bar1 = Bar::new(
+        let bar1 = Bar::new_with_quote_volume(
             bar_type,
             Price::from("100.10"),
             Price::from("102.00"),
             Price::from("100.00"),
             Price::from("101.00"),
             Quantity::from(1100),
+            "200.750000000000000001".parse().unwrap(),
             1_000_000_000.into(),
             1_000_000_001.into(),
         );
@@ -535,8 +596,50 @@ mod tests {
             assert_eq!(dec.low, orig.low);
             assert_eq!(dec.close, orig.close);
             assert_eq!(dec.volume, orig.volume);
+            assert_eq!(dec.quote_volume(), orig.quote_volume());
             assert_eq!(dec.ts_event, orig.ts_event);
             assert_eq!(dec.ts_init, orig.ts_init);
         }
+    }
+
+    #[rstest]
+    fn test_decode_legacy_batch_without_quote_volume_defaults_to_none() {
+        let bar_type = BarType::from_str("AAPL.XNAS-1-MINUTE-LAST-INTERNAL").unwrap();
+        let metadata = Bar::get_metadata(&bar_type, 2, 0);
+        let valid_price = (100.00 * FIXED_SCALAR) as PriceRaw;
+        let legacy_schema = Schema::new_with_metadata(
+            vec![
+                Field::new("open", DataType::FixedSizeBinary(PRECISION_BYTES), false),
+                Field::new("high", DataType::FixedSizeBinary(PRECISION_BYTES), false),
+                Field::new("low", DataType::FixedSizeBinary(PRECISION_BYTES), false),
+                Field::new("close", DataType::FixedSizeBinary(PRECISION_BYTES), false),
+                Field::new("volume", DataType::FixedSizeBinary(PRECISION_BYTES), false),
+                Field::new("ts_event", DataType::UInt64, false),
+                Field::new("ts_init", DataType::UInt64, false),
+            ],
+            metadata.clone(),
+        );
+        let price = || FixedSizeBinaryArray::from(vec![&valid_price.to_le_bytes()]);
+        let volume = FixedSizeBinaryArray::from(vec![
+            &((100.0 * FIXED_SCALAR) as QuantityRaw).to_le_bytes(),
+        ]);
+        let batch = RecordBatch::try_new(
+            Arc::new(legacy_schema),
+            vec![
+                Arc::new(price()),
+                Arc::new(price()),
+                Arc::new(price()),
+                Arc::new(price()),
+                Arc::new(volume),
+                Arc::new(UInt64Array::from(vec![1])),
+                Arc::new(UInt64Array::from(vec![2])),
+            ],
+        )
+        .unwrap();
+
+        let bars = Bar::decode_batch(&metadata, batch).unwrap();
+
+        assert_eq!(bars.len(), 1);
+        assert_eq!(bars[0].quote_volume(), None);
     }
 }

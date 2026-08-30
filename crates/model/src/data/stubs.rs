@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     Bar, BarSpecification, BarType, CustomData, CustomDataTrait, DEPTH10_LEN, DataType, HasTsInit,
-    InstrumentStatus, OrderBookDelta, OrderBookDeltas, OrderBookDepth10, QuoteTick, TradeTick,
-    close::InstrumentClose, register_custom_data_json,
+    InstrumentStatus, OrderBookDelta, OrderBookDeltas, OrderBookDepth10, QuoteTick, QuoteVolume,
+    TradeTick, close::InstrumentClose, register_custom_data_json,
 };
 use crate::{
     data::order::BookOrder,
@@ -76,6 +76,7 @@ impl Default for Bar {
             low: Price::from("1.00000"),
             close: Price::from("1.00010"),
             volume: Quantity::from(100_000),
+            quote_volume: QuoteVolume::undefined(),
             ts_event: UnixNanos::default(),
             ts_init: UnixNanos::default(),
         }
@@ -333,6 +334,7 @@ pub fn stub_bar() -> Bar {
         low: Price::from("1.00001"),
         close: Price::from("1.00003"),
         volume: Quantity::from("100000"),
+        quote_volume: QuoteVolume::undefined(),
         ts_event: UnixNanos::default(),
         ts_init: UnixNanos::from(1),
     }

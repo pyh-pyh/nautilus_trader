@@ -14,6 +14,7 @@
 # -------------------------------------------------------------------------------------------------
 
 import abc
+from decimal import Decimal
 from typing import Any
 from typing import ClassVar
 from typing import Final
@@ -921,6 +922,16 @@ class BarDataWranglerV2(WranglerBase):
             precision=self._inner.size_precision,
             signed=False,
         )
+        if "quote_volume" in df.columns:
+            quote_volume = pa.array(
+                [
+                    None if pd.isna(value) else Decimal(str(value))
+                    for value in df["quote_volume"]
+                ],
+                type=pa.decimal128(38, 18),
+            )
+        else:
+            quote_volume = pa.nulls(len(df), type=pa.decimal128(38, 18))
 
         fields = [
             pa.field("open", pa.binary(FIXED_PRECISION_BYTES), nullable=False),
@@ -928,6 +939,7 @@ class BarDataWranglerV2(WranglerBase):
             pa.field("low", pa.binary(FIXED_PRECISION_BYTES), nullable=False),
             pa.field("close", pa.binary(FIXED_PRECISION_BYTES), nullable=False),
             pa.field("volume", pa.binary(FIXED_PRECISION_BYTES), nullable=False),
+            pa.field("quote_volume", pa.decimal128(38, 18), nullable=True),
             pa.field("ts_event", pa.uint64(), nullable=False),
             pa.field("ts_init", pa.uint64(), nullable=False),
         ]
@@ -938,6 +950,7 @@ class BarDataWranglerV2(WranglerBase):
             pa.array(low_price, type=pa.binary(FIXED_PRECISION_BYTES)),
             pa.array(close_price, type=pa.binary(FIXED_PRECISION_BYTES)),
             pa.array(volume, type=pa.binary(FIXED_PRECISION_BYTES)),
+            quote_volume,
             pa.array(ts_event, type=pa.uint64()),
             pa.array(ts_init, type=pa.uint64()),
         ]

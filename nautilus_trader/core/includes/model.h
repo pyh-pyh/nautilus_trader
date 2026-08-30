@@ -17,6 +17,11 @@
     #undef HIGH_PRECISION
 #endif
 
+/**
+ * Fixed decimal scale used for quote-currency bar turnover.
+ */
+#define QUOTE_VOLUME_SCALE 18
+
 #define DEPTH10_LEN 10
 
 #if defined(HIGH_PRECISION)
@@ -1354,6 +1359,16 @@ typedef struct BarType_t {
 } BarType_t;
 
 /**
+ * Lossless, optional quote-currency turnover stored at 18 decimal places.
+ */
+typedef struct QuoteVolume_t {
+    /**
+     * Decimal mantissa at [`QUOTE_VOLUME_SCALE`], or -1 when unavailable.
+     */
+    int128_t raw;
+} QuoteVolume_t;
+
+/**
  * Represents an aggregated bar.
  */
 typedef struct Bar_t {
@@ -1381,6 +1396,10 @@ typedef struct Bar_t {
      * The bars volume.
      */
     struct Quantity_t volume;
+    /**
+     * Quote-currency turnover, when supplied by the data source.
+     */
+    struct QuoteVolume_t quote_volume;
     /**
      * UNIX timestamp (nanoseconds) when the data event occurred.
      */
@@ -1926,6 +1945,11 @@ typedef struct Money_t {
 } Money_t;
 
 /**
+ * Internal sentinel for a bar without quote-currency turnover.
+ */
+#define QUOTE_VOLUME_UNDEFINED_RAW -1
+
+/**
  * Represents a NULL book order (used with the `Clear` action or where an order is not specified).
  */
 #define NULL_ORDER (BookOrder_t){ .side = OrderSide_NoOrderSide, .price = (Price_t){ .raw = 0, .precision = 0 }, .size = (Quantity_t){ .raw = 0, .precision = 0 }, .order_id = 0 }
@@ -2119,6 +2143,27 @@ struct Bar_t bar_new(struct BarType_t bar_type,
                      struct Quantity_t volume,
                      uint64_t ts_event,
                      uint64_t ts_init);
+
+struct Bar_t bar_new_with_quote_volume(struct BarType_t bar_type,
+                                       struct Price_t open,
+                                       struct Price_t high,
+                                       struct Price_t low,
+                                       struct Price_t close,
+                                       struct Quantity_t volume,
+                                       struct QuoteVolume_t quote_volume,
+                                       uint64_t ts_event,
+                                       uint64_t ts_init);
+
+/**
+ * # Safety
+ *
+ * Assumes `ptr` is a valid C string pointer containing a non-negative decimal.
+ */
+struct QuoteVolume_t quote_volume_from_cstr(const char *ptr);
+
+uint8_t quote_volume_is_undefined(const struct QuoteVolume_t *value);
+
+const char *quote_volume_to_cstr(const struct QuoteVolume_t *value);
 
 uint8_t bar_eq(const struct Bar_t *lhs, const struct Bar_t *rhs);
 

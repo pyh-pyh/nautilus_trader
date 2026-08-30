@@ -36,12 +36,13 @@ use pyo3::{
     pyclass::CompareOp,
     types::{PyDict, PyTuple},
 };
+use rust_decimal::Decimal;
 
 use super::data_to_pycapsule;
 use crate::{
     data::{
         Data,
-        bar::{Bar, BarSpecification, BarType},
+        bar::{Bar, BarSpecification, BarType, QuoteVolume},
     },
     enums::{AggregationSource, BarAggregation, PriceType},
     identifiers::InstrumentId,
@@ -462,16 +463,23 @@ impl Bar {
         let volume_prec: u8 = volume_py.getattr("precision")?.extract()?;
         let volume = Quantity::from_raw(volume_raw, volume_prec);
 
+        let quote_volume: Option<Decimal> = obj.getattr("quote_volume")?.extract()?;
+        let quote_volume = match quote_volume {
+            Some(value) => QuoteVolume::new_checked(value).map_err(to_pyvalue_err)?,
+            None => QuoteVolume::undefined(),
+        };
+
         let ts_event: u64 = obj.getattr("ts_event")?.extract()?;
         let ts_init: u64 = obj.getattr("ts_init")?.extract()?;
 
-        Self::new_checked(
+        Self::new_checked_with_quote_volume(
             bar_type,
             open,
             high,
             low,
             close,
             volume,
+            quote_volume,
             ts_event.into(),
             ts_init.into(),
         )
@@ -485,6 +493,7 @@ impl Bar {
 impl Bar {
     /// Represents an aggregated bar.
     #[new]
+    #[pyo3(signature = (bar_type, open, high, low, close, volume, ts_event, ts_init, quote_volume=None))]
     fn py_new(
         bar_type: BarType,
         open: Price,
@@ -494,14 +503,20 @@ impl Bar {
         volume: Quantity,
         ts_event: u64,
         ts_init: u64,
+        quote_volume: Option<Decimal>,
     ) -> PyResult<Self> {
-        Self::new_checked(
+        let quote_volume = match quote_volume {
+            Some(value) => QuoteVolume::new_checked(value).map_err(to_pyvalue_err)?,
+            None => QuoteVolume::undefined(),
+        };
+        Self::new_checked_with_quote_volume(
             bar_type,
             open,
             high,
             low,
             close,
             volume,
+            quote_volume,
             ts_event.into(),
             ts_init.into(),
         )
@@ -564,6 +579,12 @@ impl Bar {
     #[pyo3(name = "volume")]
     fn py_volume(&self) -> Quantity {
         self.volume
+    }
+
+    #[getter]
+    #[pyo3(name = "quote_volume")]
+    fn py_quote_volume(&self) -> Option<Decimal> {
+        self.quote_volume()
     }
 
     #[getter]
@@ -668,6 +689,15 @@ impl Bar {
         let volume_prec: u8 = py_tuple.get_item(7)?.extract()?;
         let ts_event: u64 = py_tuple.get_item(8)?.extract()?;
         let ts_init: u64 = py_tuple.get_item(9)?.extract()?;
+        let quote_volume = if py_tuple.len() > 10 {
+            let value: Option<Decimal> = py_tuple.get_item(10)?.extract()?;
+            match value {
+                Some(value) => QuoteVolume::new_checked(value).map_err(to_pyvalue_err)?,
+                None => QuoteVolume::undefined(),
+            }
+        } else {
+            QuoteVolume::undefined()
+        };
 
         self.bar_type = BarType::from_str(&bar_type_str).map_err(to_pyvalue_err)?;
         self.open = Price::from_raw(open_raw, open_prec);
@@ -675,6 +705,7 @@ impl Bar {
         self.low = Price::from_raw(low_raw, open_prec);
         self.close = Price::from_raw(close_raw, open_prec);
         self.volume = Quantity::from_raw(volume_raw, volume_prec);
+        self.quote_volume = quote_volume;
         self.ts_event = ts_event.into();
         self.ts_init = ts_init.into();
         Ok(())
@@ -692,6 +723,7 @@ impl Bar {
             self.volume.precision,
             self.ts_event.as_u64(),
             self.ts_init.as_u64(),
+            self.quote_volume(),
         )
             .into_py_any(py)
     }
@@ -763,7 +795,9 @@ mod tests {
         let ts_event = 0;
         let ts_init = 1;
 
-        let result = Bar::py_new(bar_type, open, high, low, close, volume, ts_event, ts_init);
+        let result = Bar::py_new(
+            bar_type, open, high, low, close, volume, ts_event, ts_init, None,
+        );
         assert!(result.is_err());
     }
 
@@ -778,7 +812,9 @@ mod tests {
         let ts_event = 0;
         let ts_init = 1;
 
-        let result = Bar::py_new(bar_type, open, high, low, close, volume, ts_event, ts_init);
+        let result = Bar::py_new(
+            bar_type, open, high, low, close, volume, ts_event, ts_init, None,
+        );
         assert!(result.is_ok());
     }
 

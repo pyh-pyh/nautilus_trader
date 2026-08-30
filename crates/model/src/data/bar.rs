@@ -32,6 +32,7 @@ use nautilus_core::{
     datetime::{add_n_months, subtract_n_months},
     serialization::Serializable,
 };
+use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::HasTsInit;
@@ -967,6 +968,115 @@ impl<'de> Deserialize<'de> for BarType {
     }
 }
 
+/// Fixed decimal scale used for quote-currency bar turnover.
+pub const QUOTE_VOLUME_SCALE: u32 = 18;
+
+/// Internal sentinel for a bar without quote-currency turnover.
+pub const QUOTE_VOLUME_UNDEFINED_RAW: i128 = -1;
+
+/// Lossless, optional quote-currency turnover stored at 18 decimal places.
+#[repr(C)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct QuoteVolume {
+    /// Decimal mantissa at [`QUOTE_VOLUME_SCALE`], or -1 when unavailable.
+    pub raw: i128,
+}
+
+impl QuoteVolume {
+    /// Creates an undefined quote volume.
+    #[must_use]
+    pub const fn undefined() -> Self {
+        Self {
+            raw: QUOTE_VOLUME_UNDEFINED_RAW,
+        }
+    }
+
+    /// Creates a quote volume without losing digits beyond the fixed scale.
+    pub fn new_checked(value: Decimal) -> anyhow::Result<Self> {
+        check_predicate_true(value >= Decimal::ZERO, "quote_volume >= 0")?;
+        let rounded = value.round_dp(QUOTE_VOLUME_SCALE);
+        check_predicate_true(rounded == value, "quote_volume precision <= 18")?;
+
+        let mut normalized = value;
+        normalized.rescale(QUOTE_VOLUME_SCALE);
+        Ok(Self {
+            raw: normalized.mantissa(),
+        })
+    }
+
+    /// Creates a quote volume from an Arrow Decimal128 mantissa.
+    pub fn from_raw_checked(raw: i128) -> anyhow::Result<Self> {
+        check_predicate_true(raw >= 0, "quote_volume raw >= 0")?;
+        let value = Decimal::try_from_i128_with_scale(raw, QUOTE_VOLUME_SCALE)
+            .map_err(anyhow::Error::msg)?;
+        Self::new_checked(value)
+    }
+
+    /// Returns whether quote volume is unavailable.
+    #[must_use]
+    pub const fn is_undefined(&self) -> bool {
+        self.raw == QUOTE_VOLUME_UNDEFINED_RAW
+    }
+
+    /// Returns the quote volume as a decimal when available.
+    #[must_use]
+    pub fn as_decimal(&self) -> Option<Decimal> {
+        if self.is_undefined() {
+            None
+        } else {
+            Some(Decimal::from_i128_with_scale(self.raw, QUOTE_VOLUME_SCALE))
+        }
+    }
+}
+
+impl Default for QuoteVolume {
+    fn default() -> Self {
+        Self::undefined()
+    }
+}
+
+impl FromStr for QuoteVolume {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::new_checked(Decimal::from_str(value)?)
+    }
+}
+
+impl Display for QuoteVolume {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.as_decimal() {
+            Some(value) => write!(f, "{value}"),
+            None => f.write_str("None"),
+        }
+    }
+}
+
+impl Serialize for QuoteVolume {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self.as_decimal() {
+            Some(value) => serializer.serialize_str(&value.to_string()),
+            None => serializer.serialize_none(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for QuoteVolume {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value: Option<std::borrow::Cow<'de, str>> = Option::deserialize(deserializer)?;
+        match value {
+            Some(value) => Self::from_str(value.as_ref()).map_err(serde::de::Error::custom),
+            None => Ok(Self::undefined()),
+        }
+    }
+}
+
 /// Represents an aggregated bar.
 #[repr(C)]
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -992,6 +1102,9 @@ pub struct Bar {
     pub close: Price,
     /// The bars volume.
     pub volume: Quantity,
+    /// Quote-currency turnover, when supplied by the data source.
+    #[serde(default, skip_serializing_if = "QuoteVolume::is_undefined")]
+    pub quote_volume: QuoteVolume,
     /// UNIX timestamp (nanoseconds) when the data event occurred.
     pub ts_event: UnixNanos,
     /// UNIX timestamp (nanoseconds) when the instance was created.
@@ -1008,6 +1121,8 @@ struct BarFields {
     low: Price,
     close: Price,
     volume: Quantity,
+    #[serde(default)]
+    quote_volume: QuoteVolume,
     ts_event: UnixNanos,
     ts_init: UnixNanos,
 }
@@ -1016,13 +1131,14 @@ impl TryFrom<BarFields> for Bar {
     type Error = anyhow::Error;
 
     fn try_from(fields: BarFields) -> Result<Self, Self::Error> {
-        Self::new_checked(
+        Self::new_checked_with_quote_volume(
             fields.bar_type,
             fields.open,
             fields.high,
             fields.low,
             fields.close,
             fields.volume,
+            fields.quote_volume,
             fields.ts_event,
             fields.ts_init,
         )
@@ -1030,6 +1146,45 @@ impl TryFrom<BarFields> for Bar {
 }
 
 impl Bar {
+    /// Creates a new [`Bar`] with optional quote-currency turnover and correctness checking.
+    #[expect(clippy::too_many_arguments)]
+    pub fn new_checked_with_quote_volume(
+        bar_type: BarType,
+        open: Price,
+        high: Price,
+        low: Price,
+        close: Price,
+        volume: Quantity,
+        quote_volume: QuoteVolume,
+        ts_event: UnixNanos,
+        ts_init: UnixNanos,
+    ) -> anyhow::Result<Self> {
+        check_predicate_true(high >= open, "high >= open")?;
+        check_predicate_true(high >= low, "high >= low")?;
+        check_predicate_true(high >= close, "high >= close")?;
+        check_predicate_true(low <= close, "low <= close")?;
+        check_predicate_true(low <= open, "low <= open")?;
+
+        debug_assert!(
+            open.precision == high.precision
+                && open.precision == low.precision
+                && open.precision == close.precision,
+            "Bar prices must share a uniform precision (Arrow encoding assumes it)"
+        );
+
+        Ok(Self {
+            bar_type,
+            open,
+            high,
+            low,
+            close,
+            volume,
+            quote_volume,
+            ts_event,
+            ts_init,
+        })
+    }
+
     /// Creates a new [`Bar`] instance with correctness checking.
     ///
     /// # Errors
@@ -1055,29 +1210,17 @@ impl Bar {
         ts_event: UnixNanos,
         ts_init: UnixNanos,
     ) -> anyhow::Result<Self> {
-        check_predicate_true(high >= open, "high >= open")?;
-        check_predicate_true(high >= low, "high >= low")?;
-        check_predicate_true(high >= close, "high >= close")?;
-        check_predicate_true(low <= close, "low <= close")?;
-        check_predicate_true(low <= open, "low <= open")?;
-
-        debug_assert!(
-            open.precision == high.precision
-                && open.precision == low.precision
-                && open.precision == close.precision,
-            "Bar prices must share a uniform precision (Arrow encoding assumes it)"
-        );
-
-        Ok(Self {
+        Self::new_checked_with_quote_volume(
             bar_type,
             open,
             high,
             low,
             close,
             volume,
+            QuoteVolume::undefined(),
             ts_event,
             ts_init,
-        })
+        )
     }
 
     /// Creates a new [`Bar`] instance.
@@ -1104,6 +1247,41 @@ impl Bar {
     ) -> Self {
         Self::new_checked(bar_type, open, high, low, close, volume, ts_event, ts_init)
             .expect(FAILED)
+    }
+
+    /// Creates a new [`Bar`] with quote-currency turnover.
+    #[expect(clippy::too_many_arguments)]
+    #[must_use]
+    pub fn new_with_quote_volume(
+        bar_type: BarType,
+        open: Price,
+        high: Price,
+        low: Price,
+        close: Price,
+        volume: Quantity,
+        quote_volume: Decimal,
+        ts_event: UnixNanos,
+        ts_init: UnixNanos,
+    ) -> Self {
+        let quote_volume = QuoteVolume::new_checked(quote_volume).expect(FAILED);
+        Self::new_checked_with_quote_volume(
+            bar_type,
+            open,
+            high,
+            low,
+            close,
+            volume,
+            quote_volume,
+            ts_event,
+            ts_init,
+        )
+        .expect(FAILED)
+    }
+
+    /// Returns quote-currency turnover when supplied by the data source.
+    #[must_use]
+    pub fn quote_volume(&self) -> Option<Decimal> {
+        self.quote_volume.as_decimal()
     }
 
     #[must_use]
@@ -1136,6 +1314,7 @@ impl Bar {
         metadata.insert("low".to_string(), FIXED_SIZE_BINARY.to_string());
         metadata.insert("close".to_string(), FIXED_SIZE_BINARY.to_string());
         metadata.insert("volume".to_string(), FIXED_SIZE_BINARY.to_string());
+        metadata.insert("quote_volume".to_string(), "Decimal128(38, 18)".to_string());
         metadata.insert("ts_event".to_string(), "UInt64".to_string());
         metadata.insert("ts_init".to_string(), "UInt64".to_string());
         metadata
@@ -1144,11 +1323,31 @@ impl Bar {
 
 impl Display for Bar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{},{},{},{},{},{},{}",
-            self.bar_type, self.open, self.high, self.low, self.close, self.volume, self.ts_event
-        )
+        match self.quote_volume() {
+            Some(quote_volume) => write!(
+                f,
+                "{},{},{},{},{},{},{},{}",
+                self.bar_type,
+                self.open,
+                self.high,
+                self.low,
+                self.close,
+                self.volume,
+                quote_volume,
+                self.ts_event
+            ),
+            None => write!(
+                f,
+                "{},{},{},{},{},{},{}",
+                self.bar_type,
+                self.open,
+                self.high,
+                self.low,
+                self.close,
+                self.volume,
+                self.ts_event
+            ),
+        }
     }
 }
 
@@ -1856,8 +2055,29 @@ mod tests {
         assert_eq!(bar.low, low);
         assert_eq!(bar.close, close);
         assert_eq!(bar.volume, volume);
+        assert_eq!(bar.quote_volume(), None);
         assert_eq!(bar.ts_event, ts_event);
         assert_eq!(bar.ts_init, ts_init);
+    }
+
+    #[rstest]
+    fn test_bar_new_with_quote_volume_preserves_18_decimal_places() {
+        let bar_type = BarType::from("AAPL.XNAS-1-MINUTE-LAST-INTERNAL");
+        let quote_volume = "200.750000000000000001".parse().unwrap();
+
+        let bar = Bar::new_with_quote_volume(
+            bar_type,
+            Price::from("100.0"),
+            Price::from("105.0"),
+            Price::from("95.0"),
+            Price::from("102.0"),
+            Quantity::from("1000"),
+            quote_volume,
+            UnixNanos::from(1_000_000),
+            UnixNanos::from(2_000_000),
+        );
+
+        assert_eq!(bar.quote_volume(), Some(quote_volume));
     }
 
     #[rstest]
@@ -1911,6 +2131,7 @@ mod tests {
             low: Price::from("1.00002"),
             close: Price::from("1.00003"),
             volume: Quantity::from("100000"),
+            quote_volume: QuoteVolume::undefined(),
             ts_event: UnixNanos::default(),
             ts_init: UnixNanos::from(1),
         };
@@ -1922,6 +2143,7 @@ mod tests {
             low: Price::from("1.00002"),
             close: Price::from("1.00003"),
             volume: Quantity::from("100000"),
+            quote_volume: QuoteVolume::undefined(),
             ts_event: UnixNanos::default(),
             ts_init: UnixNanos::from(1),
         };
@@ -1930,11 +2152,65 @@ mod tests {
     }
 
     #[rstest]
+    fn test_bar_equality_and_display_include_quote_volume_when_defined() {
+        let bar_type = BarType::from("AAPL.XNAS-1-MINUTE-LAST-INTERNAL");
+        let base = Bar::new(
+            bar_type,
+            Price::from("100.0"),
+            Price::from("105.0"),
+            Price::from("95.0"),
+            Price::from("102.0"),
+            Quantity::from("1000"),
+            UnixNanos::from(1_000_000),
+            UnixNanos::from(2_000_000),
+        );
+        let quote_volume = "200.750000000000000001".parse().unwrap();
+        let with_quote_volume = Bar::new_with_quote_volume(
+            bar_type,
+            base.open,
+            base.high,
+            base.low,
+            base.close,
+            base.volume,
+            quote_volume,
+            base.ts_event,
+            base.ts_init,
+        );
+
+        assert_ne!(base, with_quote_volume);
+        assert_ne!(base.to_string(), with_quote_volume.to_string());
+        assert!(
+            with_quote_volume
+                .to_string()
+                .contains(&quote_volume.to_string())
+        );
+    }
+
+    #[rstest]
     fn test_json_serialization() {
         let bar = Bar::default();
         let serialized = bar.to_json_bytes().unwrap();
         let deserialized = Bar::from_json_bytes(serialized.as_ref()).unwrap();
         assert_eq!(deserialized, bar);
+    }
+
+    #[rstest]
+    fn test_json_deserialization_without_quote_volume_is_backward_compatible() {
+        let json = r#"{
+            "type": "Bar",
+            "bar_type": "AUD/USD.SIM-1-MINUTE-BID-EXTERNAL",
+            "open": "1.00010",
+            "high": "1.00020",
+            "low": "1.00000",
+            "close": "1.00010",
+            "volume": "100000",
+            "ts_event": 0,
+            "ts_init": 0
+        }"#;
+
+        let bar = Bar::from_json_bytes(json.as_bytes()).unwrap();
+
+        assert_eq!(bar.quote_volume(), None);
     }
 
     #[rstest]

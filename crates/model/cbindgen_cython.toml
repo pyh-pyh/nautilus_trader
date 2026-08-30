@@ -71,6 +71,7 @@ exclude = ["BarAggregation", "OrderId", "OrderSideSpecified"]
 "Price" = "Price_t"
 "Quantity" = "Quantity_t"
 "QuoteTick" = "QuoteTick_t"
+"QuoteVolume" = "QuoteVolume_t"
 "StrategyId" = "StrategyId_t"
 "Symbol" = "Symbol_t"
 "TimedeltaNanos" = "int64_t"

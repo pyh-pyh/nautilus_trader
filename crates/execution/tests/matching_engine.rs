@@ -5468,6 +5468,7 @@ fn test_process_mark_bar_skipped_without_panic(instrument_eth_usdt: InstrumentAn
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("100000.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -5498,6 +5499,7 @@ fn test_process_mark_bar_does_not_replace_selected_execution_bar(
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("100000.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -5508,6 +5510,7 @@ fn test_process_mark_bar_does_not_replace_selected_execution_bar(
         low: Price::from("1390.00"),
         close: Price::from("1405.00"),
         volume: Quantity::from("100000.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2_000_000_000),
         ts_init: UnixNanos::from(2_000_000_000),
     };
@@ -5518,6 +5521,7 @@ fn test_process_mark_bar_does_not_replace_selected_execution_bar(
         low: Price::from("1590.00"),
         close: Price::from("1605.00"),
         volume: Quantity::from("100000.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(3_000_000_000),
         ts_init: UnixNanos::from(3_000_000_000),
     };
@@ -5546,6 +5550,7 @@ fn test_process_monthly_bar_not_skipped(instrument_eth_usdt: InstrumentAny) {
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("100000.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -5577,6 +5582,7 @@ fn test_process_yearly_bar_not_skipped(instrument_eth_usdt: InstrumentAny) {
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("100000.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -5632,6 +5638,7 @@ fn test_process_trade_bar_fills_order_with_volume_not_divisible_by_four(
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("0.05"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -5693,6 +5700,7 @@ fn test_process_trade_bar_with_units_less_than_four_does_not_overfill(
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("3"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -5769,6 +5777,7 @@ fn test_process_trade_bar_with_two_units_fills_orders_at_high_and_low(
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("2"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -5833,6 +5842,7 @@ fn test_process_trade_bar_with_three_units_fills_order_at_high(
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("3"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -5873,6 +5883,7 @@ fn test_process_quote_bar_with_volume_not_divisible_by_four(instrument_eth_usdt:
         low: Price::from("1498.00"),
         close: Price::from("1499.50"),
         volume: Quantity::from("0.07"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -5883,6 +5894,7 @@ fn test_process_quote_bar_with_volume_not_divisible_by_four(instrument_eth_usdt:
         low: Price::from("1499.00"),
         close: Price::from("1500.50"),
         volume: Quantity::from("0.09"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -5910,6 +5922,7 @@ fn test_process_quote_bar_with_one_unit_updates_close(instrument_eth_usdt: Instr
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("1"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -5920,6 +5933,7 @@ fn test_process_quote_bar_with_one_unit_updates_close(instrument_eth_usdt: Instr
         low: Price::from("1491.00"),
         close: Price::from("1506.00"),
         volume: Quantity::from("1"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -5976,6 +5990,7 @@ fn test_process_quote_bar_with_asymmetric_units_updates_positive_sides(
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("3"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -5986,6 +6001,7 @@ fn test_process_quote_bar_with_asymmetric_units_updates_positive_sides(
         low: Price::from("1491.00"),
         close: Price::from("1506.00"),
         volume: Quantity::from("1"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -6038,6 +6054,7 @@ fn test_process_quote_bar_with_zero_ask_volume_clears_previous_ask(
         low: Price::from("1497.00"),
         close: Price::from("1499.00"),
         volume: Quantity::from("1"),
+        quote_volume: Default::default(),
         ts_event: first_ts,
         ts_init: first_ts,
     };
@@ -6048,6 +6065,7 @@ fn test_process_quote_bar_with_zero_ask_volume_clears_previous_ask(
         low: Price::from("1498.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("1"),
+        quote_volume: Default::default(),
         ts_event: first_ts,
         ts_init: first_ts,
     };
@@ -6066,6 +6084,7 @@ fn test_process_quote_bar_with_zero_ask_volume_clears_previous_ask(
         low: Price::from("1590.00"),
         close: Price::from("1605.00"),
         volume: Quantity::from("3"),
+        quote_volume: Default::default(),
         ts_event: second_ts,
         ts_init: second_ts,
     };
@@ -6076,6 +6095,7 @@ fn test_process_quote_bar_with_zero_ask_volume_clears_previous_ask(
         low: Price::from("1591.00"),
         close: Price::from("1606.00"),
         volume: Quantity::from("0"),
+        quote_volume: Default::default(),
         ts_event: second_ts,
         ts_init: second_ts,
     };
@@ -6108,6 +6128,7 @@ fn test_process_quote_bar_with_zero_close_side_does_not_cross_book(
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("8"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -6118,6 +6139,7 @@ fn test_process_quote_bar_with_zero_close_side_does_not_cross_book(
         low: Price::from("1491.00"),
         close: Price::from("1506.00"),
         volume: Quantity::from("3"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -6176,6 +6198,7 @@ fn test_process_quote_bar_with_two_units_fills_orders_at_high_and_low(
         low: Price::from("1490.00"),
         close: Price::from("1505.00"),
         volume: Quantity::from("2"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -6186,6 +6209,7 @@ fn test_process_quote_bar_with_two_units_fills_orders_at_high_and_low(
         low: Price::from("1491.00"),
         close: Price::from("1506.00"),
         volume: Quantity::from("2"),
+        quote_volume: Default::default(),
         ts_event: ts,
         ts_init: ts,
     };
@@ -7360,6 +7384,7 @@ fn test_market_if_touched_buy_fills_at_trigger_price(
         low: Price::from("1490.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -7387,6 +7412,7 @@ fn test_market_if_touched_buy_fills_at_trigger_price(
         low: Price::from("1470.00"),
         close: Price::from("1490.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2_000_000_000),
         ts_init: UnixNanos::from(2_000_000_000),
     };
@@ -7434,6 +7460,7 @@ fn test_market_if_touched_sell_fills_at_trigger_price(
         low: Price::from("1490.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -7461,6 +7488,7 @@ fn test_market_if_touched_sell_fills_at_trigger_price(
         low: Price::from("1490.00"),
         close: Price::from("1510.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2_000_000_000),
         ts_init: UnixNanos::from(2_000_000_000),
     };
@@ -7510,6 +7538,7 @@ fn test_market_if_touched_buy_fills_at_trigger_price_with_liquidity_consumption(
         low: Price::from("1490.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -7574,6 +7603,7 @@ fn test_market_if_touched_sell_fills_at_trigger_price_with_liquidity_consumption
         low: Price::from("1490.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1_000_000_000),
         ts_init: UnixNanos::from(1_000_000_000),
     };
@@ -8632,6 +8662,7 @@ fn test_bar_execution_fills_stop_order(
         low: Price::from("1480.00"),
         close: Price::from("1495.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2u64),
         ts_init: UnixNanos::from(2u64),
     };
@@ -8711,6 +8742,7 @@ fn test_bar_adaptive_ordering_fills_low_side_first(
         low: Price::from("1480.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2u64),
         ts_init: UnixNanos::from(2u64),
     };
@@ -8794,6 +8826,7 @@ fn test_quote_bar_adaptive_ordering_fills_low_side_first(
         low: Price::from("1480.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2u64),
         ts_init: UnixNanos::from(2u64),
     };
@@ -8804,6 +8837,7 @@ fn test_quote_bar_adaptive_ordering_fills_low_side_first(
         low: Price::from("1480.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2u64),
         ts_init: UnixNanos::from(2u64),
     };
@@ -8849,6 +8883,7 @@ fn test_reset_clears_cached_quote_bars(
         low: Price::from("1480.00"),
         close: Price::from("1500.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2u64),
         ts_init: UnixNanos::from(2u64),
     };
@@ -8864,6 +8899,7 @@ fn test_reset_clears_cached_quote_bars(
         low: Price::from("1481.00"),
         close: Price::from("1501.00"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(2u64),
         ts_init: UnixNanos::from(2u64),
     };
@@ -12848,6 +12884,7 @@ fn test_process_bar_drops_precision_mismatch_after_instrument_update(
         low: Price::from("999.00"),
         close: Price::from("1000.50"),
         volume: Quantity::from("100.000"),
+        quote_volume: Default::default(),
         ts_event: UnixNanos::from(1),
         ts_init: UnixNanos::from(1),
     };

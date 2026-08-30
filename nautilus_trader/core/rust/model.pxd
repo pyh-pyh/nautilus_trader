@@ -9,6 +9,9 @@ cdef extern from "../includes/model.h":
     ctypedef unsigned long long uint128_t
     ctypedef long long int128_t
 
+    # Fixed decimal scale used for quote-currency bar turnover.
+    const uint32_t QUOTE_VOLUME_SCALE # = 18
+
     const uintptr_t DEPTH10_LEN # = 10
 
     IF HIGH_PRECISION:
@@ -754,6 +757,11 @@ cdef extern from "../includes/model.h":
         Standard_Body STANDARD;
         Composite_Body COMPOSITE;
 
+    # Lossless, optional quote-currency turnover stored at 18 decimal places.
+    cdef struct QuoteVolume_t:
+        # Decimal mantissa at [`QUOTE_VOLUME_SCALE`], or -1 when unavailable.
+        int128_t raw;
+
     # Represents an aggregated bar.
     cdef struct Bar_t:
         # The bar type for this bar.
@@ -768,6 +776,8 @@ cdef extern from "../includes/model.h":
         Price_t close;
         # The bars volume.
         Quantity_t volume;
+        # Quote-currency turnover, when supplied by the data source.
+        QuoteVolume_t quote_volume;
         # UNIX timestamp (nanoseconds) when the data event occurred.
         uint64_t ts_event;
         # UNIX timestamp (nanoseconds) when the instance was created.
@@ -1067,6 +1077,9 @@ cdef extern from "../includes/model.h":
         # The currency denomination associated with the monetary amount.
         Currency_t currency;
 
+    # Internal sentinel for a bar without quote-currency turnover.
+    const int128_t QUOTE_VOLUME_UNDEFINED_RAW # = -1
+
     # Represents a NULL book order (used with the `Clear` action or where an order is not specified).
     const BookOrder_t NULL_ORDER # = <BookOrder_t>{ OrderSide_NoOrderSide, <Price_t>{ 0, 0 }, <Quantity_t>{ 0, 0 }, 0 }
 
@@ -1226,6 +1239,25 @@ cdef extern from "../includes/model.h":
                   Quantity_t volume,
                   uint64_t ts_event,
                   uint64_t ts_init);
+
+    Bar_t bar_new_with_quote_volume(BarType_t bar_type,
+                                    Price_t open,
+                                    Price_t high,
+                                    Price_t low,
+                                    Price_t close,
+                                    Quantity_t volume,
+                                    QuoteVolume_t quote_volume,
+                                    uint64_t ts_event,
+                                    uint64_t ts_init);
+
+    # # Safety
+    #
+    # Assumes `ptr` is a valid C string pointer containing a non-negative decimal.
+    QuoteVolume_t quote_volume_from_cstr(const char *ptr);
+
+    uint8_t quote_volume_is_undefined(const QuoteVolume_t *value);
+
+    const char *quote_volume_to_cstr(const QuoteVolume_t *value);
 
     uint8_t bar_eq(const Bar_t *lhs, const Bar_t *rhs);
 

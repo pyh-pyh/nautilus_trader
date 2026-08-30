@@ -54,7 +54,7 @@ use serde_json::Value as JsonValue;
 use crate::defi::DefiData;
 // Re-exports
 #[rustfmt::skip]  // Keep these grouped
-pub use bar::{Bar, BarSpecification, BarType};
+pub use bar::{Bar, BarSpecification, BarType, QuoteVolume};
 pub use black_scholes::Greeks;
 pub use close::InstrumentClose;
 #[cfg(feature = "python")]

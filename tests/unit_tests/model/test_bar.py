@@ -14,6 +14,7 @@
 # -------------------------------------------------------------------------------------------------
 
 import pickle
+from decimal import Decimal
 
 import pandas as pd
 import pytest
@@ -951,6 +952,7 @@ class TestBar:
             Quantity.from_int(100_000),
             1,
             2,
+            quote_volume=Decimal("200.750000000000000001"),
         )
 
         # Act
@@ -963,6 +965,7 @@ class TestBar:
         assert pyo3_bar.low == nautilus_pyo3.Price.from_str("1.00000")
         assert pyo3_bar.close == nautilus_pyo3.Price.from_str("1.00000")
         assert pyo3_bar.volume == nautilus_pyo3.Quantity.from_int(100_000)
+        assert pyo3_bar.quote_volume == Decimal("200.750000000000000001")
         assert pyo3_bar.ts_event == 1
         assert pyo3_bar.ts_init == 2
 

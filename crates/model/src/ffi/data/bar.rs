@@ -26,7 +26,7 @@ use nautilus_core::{
 };
 
 use crate::{
-    data::bar::{Bar, BarSpecification, BarType},
+    data::bar::{Bar, BarSpecification, BarType, QuoteVolume},
     enums::{AggregationSource, BarAggregation, PriceType},
     identifiers::InstrumentId,
     types::{Price, Quantity},
@@ -241,9 +241,55 @@ pub extern "C" fn bar_new(
         low,
         close,
         volume,
+        quote_volume: QuoteVolume::undefined(),
         ts_event,
         ts_init,
     }
+}
+
+#[unsafe(no_mangle)]
+#[cfg_attr(feature = "high-precision", allow(improper_ctypes_definitions))]
+pub extern "C" fn bar_new_with_quote_volume(
+    bar_type: BarType,
+    open: Price,
+    high: Price,
+    low: Price,
+    close: Price,
+    volume: Quantity,
+    quote_volume: QuoteVolume,
+    ts_event: UnixNanos,
+    ts_init: UnixNanos,
+) -> Bar {
+    Bar {
+        bar_type,
+        open,
+        high,
+        low,
+        close,
+        volume,
+        quote_volume,
+        ts_event,
+        ts_init,
+    }
+}
+
+/// # Safety
+///
+/// Assumes `ptr` is a valid C string pointer containing a non-negative decimal.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn quote_volume_from_cstr(ptr: *const c_char) -> QuoteVolume {
+    let value = unsafe { cstr_as_str(ptr) };
+    QuoteVolume::from_str(value).expect("Invalid quote volume")
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn quote_volume_is_undefined(value: &QuoteVolume) -> u8 {
+    u8::from(value.is_undefined())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn quote_volume_to_cstr(value: &QuoteVolume) -> *const c_char {
+    str_to_cstr(&value.to_string())
 }
 
 #[unsafe(no_mangle)]

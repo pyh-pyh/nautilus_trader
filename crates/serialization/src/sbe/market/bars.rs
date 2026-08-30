@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-use nautilus_model::data::{Bar, BarSpecification, BarType};
+use nautilus_model::data::{Bar, BarSpecification, BarType, QuoteVolume};
 
 use super::{
     super::{SbeCursor, SbeDecodeError, SbeEncodeError, SbeWriter},
@@ -56,7 +56,7 @@ impl MarketSbeMessage for BarType {
 impl MarketSbeMessage for Bar {
     const TEMPLATE_ID: u16 = template_id::BAR;
     const BLOCK_LENGTH: u16 =
-        BAR_TYPE_BLOCK_LENGTH + (PRICE_BLOCK_LENGTH * 4) + QUANTITY_BLOCK_LENGTH + 16;
+        BAR_TYPE_BLOCK_LENGTH + (PRICE_BLOCK_LENGTH * 4) + QUANTITY_BLOCK_LENGTH + 32;
 
     fn encode_body(&self, writer: &mut SbeWriter<'_>) -> Result<(), SbeEncodeError> {
         // Wire form carries the standard bar type (see BarType::encode_body)
@@ -68,6 +68,7 @@ impl MarketSbeMessage for Bar {
         encode_price(writer, &self.low);
         encode_price(writer, &self.close);
         encode_quantity(writer, &self.volume);
+        writer.write_i128_le(self.quote_volume.raw);
         encode_unix_nanos(writer, self.ts_event);
         encode_unix_nanos(writer, self.ts_init);
         encode_instrument_id(writer, &standard.instrument_id())
@@ -81,6 +82,16 @@ impl MarketSbeMessage for Bar {
         let low = decode_price(cursor)?;
         let close = decode_price(cursor)?;
         let volume = decode_quantity(cursor)?;
+        let quote_volume_raw = cursor.read_i128_le()?;
+        let quote_volume = if quote_volume_raw == -1 {
+            QuoteVolume::undefined()
+        } else {
+            QuoteVolume::from_raw_checked(quote_volume_raw).map_err(|_| {
+                SbeDecodeError::InvalidValue {
+                    field: "Bar.quote_volume",
+                }
+            })?
+        };
         let ts_event = decode_unix_nanos(cursor)?;
         let ts_init = decode_unix_nanos(cursor)?;
         let instrument_id = decode_instrument_id(cursor)?;
@@ -92,6 +103,7 @@ impl MarketSbeMessage for Bar {
             low,
             close,
             volume,
+            quote_volume,
             ts_event,
             ts_init,
         })

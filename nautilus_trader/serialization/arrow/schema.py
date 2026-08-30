@@ -52,6 +52,8 @@ from nautilus_trader.model.events import OrderUpdated
 def infer_dtype(dtype_str: str) -> pa.DataType:
     if dtype_str.startswith("FixedSizeBinary"):
         return pa.binary(nautilus_pyo3.PRECISION_BYTES)
+    elif dtype_str == "Decimal128(38, 18)":
+        return pa.decimal128(38, 18)
     else:
         return pa.type_for_alias(dtype_str)
 
@@ -82,7 +84,10 @@ NAUTILUS_ARROW_SCHEMA = {
         ],
     ),
     Bar: pa.schema(
-        [pa.field(k, infer_dtype(v), False) for k, v in nautilus_pyo3.Bar.get_fields().items()],
+        [
+            pa.field(k, infer_dtype(v), k == "quote_volume")
+            for k, v in nautilus_pyo3.Bar.get_fields().items()
+        ],
     ),
     MarkPriceUpdate: pa.schema(
         [

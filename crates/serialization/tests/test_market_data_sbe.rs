@@ -73,6 +73,30 @@ sbe_roundtrip_test!(
     BarType
 );
 sbe_roundtrip_test!(test_bar_roundtrip, stub_bar(), Bar);
+
+#[rstest]
+fn test_bar_with_quote_volume_roundtrip() {
+    let value = Bar::new_with_quote_volume(
+        BarType::new(
+            InstrumentId::from("BTC-USDT-SWAP.OKX"),
+            BarSpecification::new(1, BarAggregation::Minute, PriceType::Last),
+            AggregationSource::External,
+        ),
+        Price::from("60000.0"),
+        Price::from("60100.0"),
+        Price::from("59900.0"),
+        Price::from("60050.0"),
+        Quantity::from("2.5"),
+        "150125.000000000000000001".parse().unwrap(),
+        123.into(),
+        124.into(),
+    );
+
+    let bytes = value.to_sbe().unwrap();
+    let decoded = Bar::from_sbe(&bytes).unwrap();
+
+    assert_eq!(value, decoded);
+}
 sbe_roundtrip_test!(
     test_mark_price_update_roundtrip,
     sample_mark_price_update(),

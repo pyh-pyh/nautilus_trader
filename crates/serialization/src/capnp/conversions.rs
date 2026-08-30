@@ -22,7 +22,7 @@ use nautilus_model::{
     data::{
         FundingRateUpdate, IndexPriceUpdate, InstrumentClose, InstrumentStatus, MarkPriceUpdate,
         OptionGreekValues, OptionGreeks, QuoteTick, TradeTick,
-        bar::{Bar, BarSpecification, BarType},
+        bar::{Bar, BarSpecification, BarType, QuoteVolume},
         delta::OrderBookDelta,
         deltas::OrderBookDeltas,
         depth::OrderBookDepth10,
@@ -2084,6 +2084,13 @@ impl<'a> ToCapnp<'a> for Bar {
         let volume_builder = builder.reborrow().init_volume();
         self.volume.to_capnp(volume_builder);
 
+        if !self.quote_volume.is_undefined() {
+            builder.set_has_quote_volume(true);
+            let mut raw_builder = builder.reborrow().init_quote_volume_raw();
+            raw_builder.set_lo(self.quote_volume.raw as u64);
+            raw_builder.set_hi((self.quote_volume.raw >> 64) as u64);
+        }
+
         let mut ts_event_builder = builder.reborrow().init_ts_event();
         ts_event_builder.set_value(*self.ts_event);
 
@@ -2114,6 +2121,16 @@ impl<'a> FromCapnp<'a> for Bar {
         let volume_reader = reader.get_volume()?;
         let volume = Quantity::from_capnp(volume_reader)?;
 
+        let quote_volume = if reader.get_has_quote_volume() {
+            let raw_reader = reader.get_quote_volume_raw()?;
+            let lo = raw_reader.get_lo();
+            let hi = raw_reader.get_hi();
+            let raw = ((hi as i64 as i128) << 64) | i128::from(lo);
+            QuoteVolume::from_raw_checked(raw)?
+        } else {
+            QuoteVolume::undefined()
+        };
+
         let ts_event_reader = reader.get_ts_event()?;
         let ts_event = ts_event_reader.get_value();
 
@@ -2127,6 +2144,7 @@ impl<'a> FromCapnp<'a> for Bar {
             low,
             close,
             volume,
+            quote_volume,
             ts_event: ts_event.into(),
             ts_init: ts_init.into(),
         })

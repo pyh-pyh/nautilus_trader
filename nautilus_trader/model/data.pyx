@@ -15,6 +15,7 @@
 
 import pickle
 import warnings
+import decimal
 
 import numpy as np
 import pandas as pd
@@ -57,10 +58,12 @@ from nautilus_trader.core.rust.model cimport PriceRaw
 from nautilus_trader.core.rust.model cimport PriceType
 from nautilus_trader.core.rust.model cimport Quantity_t
 from nautilus_trader.core.rust.model cimport QuantityRaw
+from nautilus_trader.core.rust.model cimport QuoteVolume_t
 from nautilus_trader.core.rust.model cimport RecordFlag
 from nautilus_trader.core.rust.model cimport bar_eq
 from nautilus_trader.core.rust.model cimport bar_hash
 from nautilus_trader.core.rust.model cimport bar_new
+from nautilus_trader.core.rust.model cimport bar_new_with_quote_volume
 from nautilus_trader.core.rust.model cimport bar_specification_eq
 from nautilus_trader.core.rust.model cimport bar_specification_ge
 from nautilus_trader.core.rust.model cimport bar_specification_gt
@@ -127,6 +130,9 @@ from nautilus_trader.core.rust.model cimport orderbook_depth10_hash
 from nautilus_trader.core.rust.model cimport orderbook_depth10_new
 from nautilus_trader.core.rust.model cimport price_from_raw
 from nautilus_trader.core.rust.model cimport quantity_from_raw
+from nautilus_trader.core.rust.model cimport quote_volume_from_cstr
+from nautilus_trader.core.rust.model cimport quote_volume_is_undefined
+from nautilus_trader.core.rust.model cimport quote_volume_to_cstr
 from nautilus_trader.core.rust.model cimport quote_tick_eq
 from nautilus_trader.core.rust.model cimport quote_tick_hash
 from nautilus_trader.core.rust.model cimport quote_tick_new
@@ -1495,6 +1501,8 @@ cdef class Bar(Data):
         UNIX timestamp (nanoseconds) when the data object was initialized.
     is_revision : bool, default False
         If this bar is a revision of a previous bar with the same `ts_event`.
+    quote_volume : Decimal, optional
+        Quote-currency turnover for the bar, stored losslessly at 18 decimal places.
 
     Raises
     ------
@@ -1518,6 +1526,7 @@ cdef class Bar(Data):
         uint64_t ts_event,
         uint64_t ts_init,
         bint is_revision = False,
+        quote_volume = None,
     ) -> None:
         Condition.is_true(high._mem.raw >= open._mem.raw, "high was < open")
         Condition.is_true(high._mem.raw >= low._mem.raw, "high was < low")
@@ -1525,16 +1534,29 @@ cdef class Bar(Data):
         Condition.is_true(low._mem.raw <= close._mem.raw, "low was > close")
         Condition.is_true(low._mem.raw <= open._mem.raw, "low was > open")
 
-        self._mem = bar_new(
-            bar_type._mem,
-            open._mem,
-            high._mem,
-            low._mem,
-            close._mem,
-            volume._mem,
-            ts_event,
-            ts_init,
-        )
+        if quote_volume is None:
+            self._mem = bar_new(
+                bar_type._mem,
+                open._mem,
+                high._mem,
+                low._mem,
+                close._mem,
+                volume._mem,
+                ts_event,
+                ts_init,
+            )
+        else:
+            self._mem = bar_new_with_quote_volume(
+                bar_type._mem,
+                open._mem,
+                high._mem,
+                low._mem,
+                close._mem,
+                volume._mem,
+                quote_volume_from_cstr(pystr_to_cstr(str(decimal.Decimal(quote_volume)))),
+                ts_event,
+                ts_init,
+            )
         self.is_revision = is_revision
 
     def __getstate__(self):
@@ -1551,6 +1573,7 @@ cdef class Bar(Data):
             self._mem.volume.precision,
             self.ts_event,
             self.ts_init,
+            self.quote_volume,
         )
 
     def __setstate__(self, state):
@@ -1558,7 +1581,7 @@ cdef class Bar(Data):
         cdef uint8_t price_prec
         cdef uint8_t size_prec
 
-        if len(state) == 14:
+        if len(state) in (14, 15):
             instrument_id = InstrumentId.from_str_c(state[0])
             price_prec = state[9]
             size_prec = state[11]
@@ -1581,6 +1604,10 @@ cdef class Bar(Data):
                 state[12],
                 state[13],
             )
+            if len(state) == 15 and state[14] is not None:
+                self._mem.quote_volume = quote_volume_from_cstr(
+                    pystr_to_cstr(str(decimal.Decimal(state[14])))
+                )
         else:
             instrument_id = InstrumentId.from_str_c(state[0])
             price_prec = state[12]
@@ -1608,6 +1635,10 @@ cdef class Bar(Data):
                 state[15],
                 state[16],
             )
+            if len(state) == 18 and state[17] is not None:
+                self._mem.quote_volume = quote_volume_from_cstr(
+                    pystr_to_cstr(str(decimal.Decimal(state[17])))
+                )
 
     def __eq__(self, Bar other) -> bool:
         if other is None:
@@ -1697,6 +1728,20 @@ cdef class Bar(Data):
 
         """
         return Quantity.from_raw_c(self._mem.volume.raw, self._mem.volume.precision)
+
+    @property
+    def quote_volume(self):
+        """
+        Return quote-currency turnover when supplied by the data source.
+
+        Returns
+        -------
+        Decimal or None
+
+        """
+        if quote_volume_is_undefined(&self._mem.quote_volume):
+            return None
+        return decimal.Decimal(cstr_to_pystr(quote_volume_to_cstr(&self._mem.quote_volume)))
 
     @property
     def ts_event(self) -> int:
@@ -1848,6 +1893,7 @@ cdef class Bar(Data):
             volume=Quantity.from_str_c(values["volume"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
+            quote_volume=values.get("quote_volume"),
         )
 
     @staticmethod
@@ -1861,6 +1907,7 @@ cdef class Bar(Data):
             "low": str(obj.low),
             "close": str(obj.close),
             "volume": str(obj.volume),
+            "quote_volume": str(obj.quote_volume) if obj.quote_volume is not None else None,
             "ts_event": obj._mem.ts_event,
             "ts_init": obj._mem.ts_init,
         }
@@ -1988,6 +2035,7 @@ cdef class Bar(Data):
                 nautilus_pyo3.Quantity.from_raw(bar._mem.volume.raw, volume_prec),
                 bar._mem.ts_event,
                 bar._mem.ts_init,
+                bar.quote_volume,
             )
             output.append(pyo3_bar)
 
@@ -2050,6 +2098,7 @@ cdef class Bar(Data):
             nautilus_pyo3.Quantity.from_raw(self._mem.volume.raw, self._mem.volume.precision),
             self._mem.ts_event,
             self._mem.ts_init,
+            self.quote_volume,
         )
 
     cpdef bint is_single_price(self):
