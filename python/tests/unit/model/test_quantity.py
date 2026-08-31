@@ -351,7 +351,7 @@ def test_checked_sub_underflow_returns_none():
 
 
 def test_checked_add_above_max_returns_none():
-    qty_max = 34_028_236_692_093.0 if HIGH_PRECISION else 18_446_744_073.0
+    qty_max = 3_402_823_669_209_299_968.0 if HIGH_PRECISION else 18_446_744_073.0
     near_max = Quantity(qty_max, 0)
     one_billion = Quantity(1_000_000_000.0, 0)
     assert near_max.checked_add(one_billion) is None

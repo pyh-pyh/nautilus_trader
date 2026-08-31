@@ -53,6 +53,7 @@ from nautilus_trader.core.nautilus_pyo3 import drop_cvec_pycapsule
 from nautilus_trader.model.data import Bar
 from nautilus_trader.model.data import CustomData
 from nautilus_trader.model.data import DataType
+from nautilus_trader.model.data import FundingRateUpdate
 from nautilus_trader.model.data import InstrumentStatus
 from nautilus_trader.model.data import MarkPriceUpdate
 from nautilus_trader.model.data import OptionGreeks
@@ -2130,6 +2131,29 @@ class ParquetDataCatalog(BaseDataCatalog):
 
         if not file_list:
             return []
+
+        # FundingRateUpdate stores its instrument identifier in Arrow schema metadata rather
+        # than in a row-level column. A dataset spanning multiple instrument directories keeps
+        # only the first fragment's metadata and would therefore relabel every decoded row as
+        # the first instrument. Decode each directory independently before merging the result.
+        if data_cls is FundingRateUpdate:
+            files_by_directory: dict[str, list[str]] = defaultdict(list)
+            for file in file_list:
+                files_by_directory[os.path.dirname(file)].append(file)
+            if len(files_by_directory) > 1:
+                data = [
+                    item
+                    for directory in sorted(files_by_directory)
+                    for item in self._query_pyarrow(
+                        data_cls=data_cls,
+                        start=start,
+                        end=end,
+                        filter_expr=filter_expr,
+                        files=files_by_directory[directory],
+                        **kwargs,
+                    )
+                ]
+                return sorted(data, key=lambda item: (item.ts_init, str(item.instrument_id)))
 
         # Use the registered Equity schema so fragments written before it gained
         # max_quantity/min_quantity don't mask those fields on newer fragments

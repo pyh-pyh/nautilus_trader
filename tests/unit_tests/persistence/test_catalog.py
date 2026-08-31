@@ -16,6 +16,7 @@
 import datetime
 import sys
 import tempfile
+from decimal import Decimal
 from typing import Any
 from unittest.mock import patch
 
@@ -40,11 +41,13 @@ from nautilus_trader.model.data import BarSpecification
 from nautilus_trader.model.data import BarType
 from nautilus_trader.model.data import BookOrder
 from nautilus_trader.model.data import CustomData
+from nautilus_trader.model.data import FundingRateUpdate
 from nautilus_trader.model.data import OrderBookDelta
 from nautilus_trader.model.data import QuoteTick
 from nautilus_trader.model.data import TradeTick
 from nautilus_trader.model.enums import BarAggregation
 from nautilus_trader.model.enums import PriceType
+from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.model.identifiers import TradeId
 from nautilus_trader.model.identifiers import Venue
 from nautilus_trader.model.instruments import BettingInstrument
@@ -163,6 +166,33 @@ def test_catalog_instrument_ids_correctly_unmapped(catalog: ParquetDataCatalog) 
     # Assert
     assert instrument.id.value == "AUD/USD.SIM"
     assert trade_tick.instrument_id.value == "AUD/USD.SIM"
+
+
+def test_catalog_funding_rates_preserve_ids_across_multiple_directories(
+    catalog: ParquetDataCatalog,
+) -> None:
+    btc = FundingRateUpdate(
+        InstrumentId.from_str("BTC-USDT-SWAP.OKX"),
+        Decimal("0.0001"),
+        1,
+        1,
+    )
+    eth = FundingRateUpdate(
+        InstrumentId.from_str("ETH-USDT-SWAP.OKX"),
+        Decimal("-0.0002"),
+        1,
+        1,
+    )
+    catalog.write_data([btc, eth])
+
+    loaded = catalog.funding_rates(
+        instrument_ids=["BTC-USDT-SWAP.OKX", "ETH-USDT-SWAP.OKX"],
+    )
+
+    assert {(str(item.instrument_id), item.rate) for item in loaded} == {
+        ("BTC-USDT-SWAP.OKX", Decimal("0.0001")),
+        ("ETH-USDT-SWAP.OKX", Decimal("-0.0002")),
+    }
 
 
 def test_enforce_monotonic_ts_already_sorted_returns_unchanged() -> None:

@@ -101,7 +101,11 @@ pub const QUANTITY_UNDEF: QuantityRaw = QuantityRaw::MAX;
 
 #[cfg(feature = "high-precision")]
 /// The maximum valid quantity value that can be represented.
-pub const QUANTITY_MAX: f64 = 34_028_236_692_093.0;
+///
+/// Extended for high-supply digital assets whose valid base-denominated market-data
+/// volume can exceed the upstream 34-trillion ceiling. The resulting fixed-point raw
+/// value remains more than four orders of magnitude below the u128 backing limit.
+pub const QUANTITY_MAX: f64 = 3_402_823_669_209_299_968.0;
 
 #[cfg(not(feature = "high-precision"))]
 /// The maximum valid quantity value that can be represented.
@@ -942,6 +946,18 @@ mod tests {
         assert!(qty.checked_add(Quantity::zero(0)).is_some());
     }
 
+    #[cfg(feature = "high-precision")]
+    #[rstest]
+    fn test_high_supply_token_bar_volume_is_representable() {
+        // OKX BABYDOGE spot archives contain valid one-minute base volume above the
+        // previous 34-trillion ceiling. High-precision mode has ample u128 capacity
+        // for this value, so the model must not reject it at the artificial limit.
+        let qty = Quantity::from_str("315129616611735").unwrap();
+
+        assert_eq!(qty.as_decimal(), dec!(315129616611735));
+        assert!(qty.raw <= QUANTITY_RAW_MAX);
+    }
+
     #[rstest]
     fn test_check_quantity_positive() {
         let qty = Quantity::new(0.0, 0);
@@ -1081,14 +1097,15 @@ mod tests {
 
     #[rstest]
     fn test_new_checked_returns_typed_error_with_stable_display() {
-        let error = Quantity::new_checked(QUANTITY_MAX + 1.0, FIXED_PRECISION).unwrap_err();
+        let above_max = QUANTITY_MAX.next_up();
+        let error = Quantity::new_checked(above_max, FIXED_PRECISION).unwrap_err();
 
         assert!(matches!(error, CorrectnessError::OutOfRange { .. }));
         assert_eq!(
             error.to_string(),
             format!(
                 "invalid f64 for 'value' not in range [{QUANTITY_MIN}, {QUANTITY_MAX}], was {}",
-                QUANTITY_MAX + 1.0
+                above_max
             )
         );
     }
@@ -1800,7 +1817,7 @@ mod tests {
 
     #[cfg(feature = "high-precision")]
     #[rstest]
-    #[case(QUANTITY_RAW_MAX, dec!(34028236692093))]
+    #[case(QUANTITY_RAW_MAX, dec!(3402823669209299968))]
     #[case(80_000_000_000_000_000_000_000_000_000, dec!(8000000000000))]
     fn test_as_decimal_above_decimal_mantissa(#[case] raw: QuantityRaw, #[case] expected: Decimal) {
         // Regression: a precision-16 quantity above roughly 7.92e12 rescales to a raw value

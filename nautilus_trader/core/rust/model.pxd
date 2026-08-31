@@ -90,7 +90,11 @@ cdef extern from "../includes/model.h":
 
     IF HIGH_PRECISION:
         # The maximum valid quantity value that can be represented.
-        const double QUANTITY_MAX # = 34028236692093.0
+        #
+        # Extended for high-supply digital assets whose valid base-denominated market-data
+        # volume can exceed the upstream 34-trillion ceiling. The resulting fixed-point raw
+        # value remains more than four orders of magnitude below the u128 backing limit.
+        const double QUANTITY_MAX # = 3402823669209299968.0
 
     IF not HIGH_PRECISION:
         # The maximum valid quantity value that can be represented.

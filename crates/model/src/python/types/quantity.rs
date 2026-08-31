@@ -495,7 +495,7 @@ mod tests {
     #[rstest]
     fn test_int_preserves_domain_maximum() {
         let expected: QuantityRaw = if cfg!(feature = "high-precision") {
-            34_028_236_692_093
+            3_402_823_669_209_299_968
         } else {
             18_446_744_073
         };

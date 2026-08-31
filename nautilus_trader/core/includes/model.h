@@ -151,8 +151,12 @@
 #if defined(HIGH_PRECISION)
 /**
  * The maximum valid quantity value that can be represented.
+ *
+ * Extended for high-supply digital assets whose valid base-denominated market-data
+ * volume can exceed the upstream 34-trillion ceiling. The resulting fixed-point raw
+ * value remains more than four orders of magnitude below the u128 backing limit.
  */
-#define QUANTITY_MAX 34028236692093.0
+#define QUANTITY_MAX 3402823669209299968.0
 #endif
 
 #if !defined(HIGH_PRECISION)

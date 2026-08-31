@@ -98,7 +98,7 @@ cdef class Quantity:
 
     Handles up to 16 decimals of precision (in high-precision mode).
 
-    - ``QUANTITY_MAX`` = 34_028_236_692_093
+    - ``QUANTITY_MAX`` = 3_402_823_669_209_299_968
     - ``QUANTITY_MIN`` = 0
 
     Parameters
@@ -112,7 +112,7 @@ cdef class Quantity:
     Raises
     ------
     ValueError
-        If `value` is greater than 34_028_236_692_093.
+        If `value` is greater than 3_402_823_669_209_299_968.
     ValueError
         If `value` is negative (< 0).
     ValueError

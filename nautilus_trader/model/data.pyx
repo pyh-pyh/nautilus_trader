@@ -6234,7 +6234,7 @@ cdef class FundingRateUpdate(Data):
         Condition.not_none(values, "values")
         return FundingRateUpdate(
             instrument_id=InstrumentId.from_str_c(values["instrument_id"]),
-            rate=values["rate"],
+            rate=decimal.Decimal(values["rate"]),
             ts_event=values["ts_event"],
             ts_init=values["ts_init"],
             interval=values.get("interval"),
