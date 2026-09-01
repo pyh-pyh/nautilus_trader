@@ -747,7 +747,10 @@ class ParquetDataCatalog(BaseDataCatalog):
 
         new_file_name = os.path.join(
             directory,
-            _timestamps_to_filename(intervals[0][0], intervals[-1][1]),
+            _timestamps_to_filename(
+                min(interval[0] for interval in intervals),
+                max(interval[1] for interval in intervals),
+            ),
         )
         files_to_consolidate.sort()
         self._combine_parquet_files(files_to_consolidate, new_file_name, deduplicate=deduplicate)
@@ -768,6 +771,27 @@ class ParquetDataCatalog(BaseDataCatalog):
         self._validate_table_metadata(tables, file_list)
 
         combined_table = pa.concat_tables(tables)
+
+        # A narrow repair file may sit inside the broad filename interval of an older
+        # file while filling a genuine internal timestamp gap. Preserve this valid
+        # layout by restoring chronological row order when file intervals overlap.
+        intervals = sorted(
+            interval
+            for file in file_list
+            if (interval := _parse_filename_timestamps(file)) is not None
+        )
+        overlapping = any(
+            current[0] <= previous[1]
+            for previous, current in zip(intervals, intervals[1:], strict=False)
+        )
+        if overlapping:
+            sort_keys = [
+                (column, "ascending")
+                for column in ("ts_init", "ts_event")
+                if column in combined_table.column_names
+            ]
+            if sort_keys:
+                combined_table = combined_table.sort_by(sort_keys)
 
         if deduplicate:
             combined_table = self._deduplicate_table(combined_table)
