@@ -796,7 +796,12 @@ class ParquetDataCatalog(BaseDataCatalog):
         if deduplicate:
             combined_table = self._deduplicate_table(combined_table)
 
-        pq.write_table(combined_table, where=new_file, filesystem=self.fs)
+        pq.write_table(
+            combined_table,
+            where=new_file,
+            filesystem=self.fs,
+            row_group_size=self.max_rows_per_group,
+        )
 
         for file in file_list:
             if file != new_file:
